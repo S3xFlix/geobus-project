@@ -1,105 +1,99 @@
-import express from 'express';
-import mongoose from 'mongoose';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import rutasRouter from './routes/rutas.js';
-import horariosRouter from './routes/horarios.js';
-
-// Configuración inicial
-dotenv.config();
-
-// Validación de variables críticas
-if (!process.env.MONGO_URI) {
-  console.error('❌ Error: MONGO_URI no está definido en .env');
-  process.exit(1);
-}
+require('dotenv').config();
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+const path = require('path');
 
 const app = express();
 
-// Middlewares esenciales
-app.use(cors({
-  origin: ['https://geobus.onrender.com', 'http://localhost:3000'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type']
-}));
-
+// Configuración de middleware
+app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, 'public')));
 
-// Middleware de logger para diagnóstico
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-  next();
+// Conexión a MongoDB
+mongoose.connect(process.env.MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => console.log('Conectado a MongoDB'))
+.catch(err => console.error('Error conectando a MongoDB:', err));
+
+// Modelos de datos
+const RutaSchema = new mongoose.Schema({
+  nombre: String,
+  descripcion: String,
+  color: String,
+  geojson: Object,
+  horarios: [{
+    dias: [String],
+    salidas: [String]
+  }]
 });
 
-// Configuración de rutas
-app.use('/api/rutas', rutasRouter);
-app.use('/api/horarios', horariosRouter);
-
-// Ruta de verificación de salud
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'healthy',
-    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-    timestamp: new Date()
-  });
+const ParadaSchema = new mongoose.Schema({
+  nombre: String,
+  ubicacion: {
+    type: { type: String, default: 'Point' },
+    coordinates: { type: [Number], required: true }
+  },
+  rutas: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Ruta' }]
 });
 
-// Ruta base
-app.get('/', (req, res) => {
-  res.json({
-    message: 'API GeoBus Backend',
-    version: '1.0.0',
-    endpoints: {
-      rutas: '/api/rutas',
-      horarios: '/api/horarios'
-    }
-  });
-});
+// Índice geospacial para paradas
+ParadaSchema.index({ ubicacion: '2dsphere' });
 
-// Manejo de errores global
-app.use((err, req, res, next) => {
-  console.error('⚠️ Error no manejado:', err);
-  res.status(500).json({
-    error: 'Error interno del servidor',
-    details: process.env.NODE_ENV === 'development' ? err.message : undefined
-  });
-});
+const Ruta = mongoose.model('Ruta', RutaSchema);
+const Parada = mongoose.model('Parada', ParadaSchema);
 
-// Conexión a MongoDB con manejo mejorado
-const connectDB = async () => {
+// Rutas API
+app.get('/api/rutas', async (req, res) => {
   try {
-    await mongoose.connect(process.env.MONGO_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 5000
-    });
-    console.log('✅ MongoDB conectado exitosamente');
+    const rutas = await Ruta.find({});
+    res.json(rutas);
   } catch (err) {
-    console.error('❌ Error de conexión a MongoDB:', err.message);
-    process.exit(1);
+    res.status(500).json({ error: err.message });
   }
-};
+});
 
-// Inicio seguro del servidor
-const startServer = async () => {
-  await connectDB();
-  
-  const PORT = process.env.PORT || 5000;
-  const server = app.listen(PORT, () => {
-    console.log(`🚀 Servidor escuchando en puerto ${PORT}`);
-  });
+app.get('/api/rutas/:id', async (req, res) => {
+  try {
+    const ruta = await Ruta.findById(req.params.id);
+    if (!ruta) {
+      return res.status(404).json({ error: 'Ruta no encontrada' });
+    }
+    res.json(ruta);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-  // Manejo de cierre elegante
-  process.on('SIGTERM', () => {
-    console.log('🛑 Recibido SIGTERM. Cerrando servidor...');
-    server.close(() => {
-      mongoose.connection.close(false, () => {
-        console.log('🔌 Conexiones cerradas. Servidor detenido.');
-        process.exit(0);
-      });
-    });
-  });
-};
+app.get('/api/horarios', async (req, res) => {
+  try {
+    const rutas = await Ruta.find({}, 'nombre horarios');
+    const horarios = rutas.flatMap(ruta => 
+      ruta.horarios.map(horario => ({
+        ruta: ruta.nombre,
+        ...horario.toObject()
+      }))
+    );
+    res.json(horarios);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-startServer();
+app.get('/api/paradas', async (req, res) => {
+  try {
+    const paradas = await Parada.find({}).populate('rutas', 'nombre');
+    res.json(paradas);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Iniciar servidor
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Servidor corriendo en puerto ${PORT}`);
+});
