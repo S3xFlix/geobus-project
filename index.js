@@ -2,39 +2,43 @@ import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import rutasRouter from './routes/rutas.js';
 import horariosRouter from './routes/horarios.js';
+import rutasRouter from './routes/rutas.js';
 
-// Configuración de variables de entorno
+// Configuración inicial
 dotenv.config();
-
-// Inicialización de Express
 const app = express();
 
-// Middlewares
+// Middlewares esenciales
 app.use(cors());
 app.use(express.json());
 
-// Rutas
-app.use('/api/rutas', rutasRouter);
+// Rutas principales
 app.use('/api/horarios', horariosRouter);
+app.use('/api/rutas', rutasRouter);
 
-// Conexión a MongoDB
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-.then(() => console.log('✅ MongoDB conectado correctamente'))
-.catch(err => console.error('❌ Error al conectar MongoDB:', err));
+// Conexión a MongoDB (con manejo mejorado de errores)
+const connectDB = async () => {
+  try {
+    await mongoose.connect(process.env.MONGO_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true
+    });
+    console.log('✅ MongoDB conectado exitosamente');
+  } catch (err) {
+    console.error('❌ Fallo en conexión a MongoDB:', err.message);
+    process.exit(1);
+  }
+};
 
-// Manejo de errores global
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Error interno del servidor' });
-});
+// Inicio seguro del servidor
+const startServer = async () => {
+  await connectDB();
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => {
+    console.log(`🚀 Servidor operativo en puerto ${PORT}`);
+    console.log(`🔗 http://localhost:${PORT}`);
+  });
+};
 
-// Inicio del servidor
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
-});
+startServer();
