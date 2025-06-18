@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
 const FeatureSchema = new mongoose.Schema({
   type: {
@@ -28,7 +28,6 @@ const SubRutaSchema = new mongoose.Schema({
     required: true
   },
   descripcion: String,
-  // Puedes añadir más campos específicos de cada subruta
   direccion: {
     type: String,
     enum: ['ida', 'vuelta', 'circular'],
@@ -53,7 +52,6 @@ const RutaSchema = new mongoose.Schema({
     default: []
   },
   subRutas: [SubRutaSchema],
-  // Campos adicionales para todas las rutas
   activa: {
     type: Boolean,
     default: true
@@ -63,13 +61,13 @@ const RutaSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   }
-}, { 
+}, {
   strict: false,
   toJSON: { virtuals: true },
   toObject: { virtuals: true }
 });
 
-// Referencia virtual a los horarios
+// Virtual populate
 RutaSchema.virtual('horarios', {
   ref: 'Horario',
   localField: '_id',
@@ -77,4 +75,5 @@ RutaSchema.virtual('horarios', {
   justOne: false
 });
 
-module.exports = mongoose.model('Ruta', RutaSchema);
+const Ruta = mongoose.model('Ruta', RutaSchema);
+export default Ruta;

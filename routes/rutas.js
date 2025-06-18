@@ -1,20 +1,26 @@
-const express = require('express');
+// routes/rutas.js
+import express from 'express';
 const router = express.Router();
-const Ruta = require('../models/Ruta');
-const Horario = require('../models/Horario');
-const { calcularDistancia } = require('../utils/geoUtils');
+
+import Ruta from '../models/Ruta.js';
+import Horario from '../models/Horario.js';
+import {
+  calcularDistancia,
+  encontrarConexionesCercanas,
+  validarCoordenadas
+} from '../utils/geoUtils.js';
 
 // Obtener todas las rutas (con información básica)
 router.get('/', async (req, res) => {
   try {
-    const rutas = await Ruta.find({}, { 
-      _id: 1, 
+    const rutas = await Ruta.find({}, {
+      _id: 1,
       nombre: 1,
       subRutas: 1,
       empresa: 1,
       activa: 1
     }).sort({ nombre: 1 });
-    
+
     res.json(rutas);
   } catch (error) {
     res.status(500).json({ error: 'Error al obtener rutas' });
@@ -29,12 +35,11 @@ router.get('/:id', async (req, res) => {
         path: 'horarios',
         select: 'subRutaId subRutaNombre dias salidas tipoHorario'
       });
-    
+
     if (!ruta) {
       return res.status(404).json({ error: 'Ruta no encontrada' });
     }
 
-    // Formatear respuesta para incluir GeoJSON y horarios
     const response = {
       ...ruta.toObject(),
       geojson: {
@@ -56,7 +61,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Obtener paradas de una ruta (con horarios si están disponibles)
+// Obtener paradas de una ruta
 router.get('/:id/paradas', async (req, res) => {
   try {
     const ruta = await Ruta.findById(req.params.id)
@@ -69,7 +74,6 @@ router.get('/:id/paradas', async (req, res) => {
       return res.status(404).json({ error: 'Ruta no encontrada' });
     }
 
-    // Mapear paradas con información de horarios cercanos
     const paradas = ruta.features
       .filter(f => f.geometry?.type === "Point")
       .map(f => {
@@ -80,11 +84,10 @@ router.get('/:id/paradas', async (req, res) => {
           horarios: {}
         };
 
-        // Agregar horarios por subruta
         ruta.subRutas.forEach(subRuta => {
           const horariosSubRuta = ruta.horarios
             .filter(h => h.subRutaId.toString() === subRuta._id.toString());
-          
+
           if (horariosSubRuta.length > 0) {
             parada.horarios[subRuta.nombre] = horariosSubRuta;
           }
@@ -99,31 +102,27 @@ router.get('/:id/paradas', async (req, res) => {
   }
 });
 
-// Buscar conexiones cercanas entre paradas (con información de horarios)
+// Buscar conexiones cercanas entre paradas
 router.get('/:rutaId/conexiones/:paradaId', async (req, res) => {
   try {
     const { rutaId, paradaId } = req.params;
-    const distanciaMaxima = req.query.distancia || 500; // metros
+    const distanciaMaxima = req.query.distancia || 500;
 
-    // Obtener ruta y parada de origen
-    const rutaOrigen = await Ruta.findById(rutaId)
-      .populate('horarios');
-    
+    const rutaOrigen = await Ruta.findById(rutaId).populate('horarios');
+
     const paradaOrigen = rutaOrigen.features.find(
-      f => f.geometry?.type === "Point" && 
-           (f.properties?.id === paradaId || f._id.toString() === paradaId)
+      f => f.geometry?.type === "Point" &&
+        (f.properties?.id === paradaId || f._id.toString() === paradaId)
     );
 
     if (!paradaOrigen) {
       return res.status(404).json({ error: 'Parada no encontrada' });
     }
 
-    // Buscar en otras rutas
-    const otrasRutas = await Ruta.find({ _id: { $ne: rutaId } })
-      .populate('horarios');
+    const otrasRutas = await Ruta.find({ _id: { $ne: rutaId } }).populate('horarios');
 
     const conexiones = [];
-    
+
     for (const ruta of otrasRutas) {
       for (const feature of ruta.features) {
         if (feature.geometry?.type === "Point") {
@@ -133,7 +132,6 @@ router.get('/:rutaId/conexiones/:paradaId', async (req, res) => {
           );
 
           if (distancia <= distanciaMaxima) {
-            // Obtener horarios para esta parada
             const horariosParada = ruta.horarios.map(horario => ({
               subRutaNombre: horario.subRutaNombre,
               dias: horario.dias,
@@ -154,7 +152,6 @@ router.get('/:rutaId/conexiones/:paradaId', async (req, res) => {
       }
     }
 
-    // Ordenar por distancia
     conexiones.sort((a, b) => a.distancia - b.distancia);
 
     res.json({
@@ -171,7 +168,7 @@ router.get('/:rutaId/conexiones/:paradaId', async (req, res) => {
   }
 });
 
-// Nuevo endpoint: Obtener subrutas de una ruta con sus horarios
+// Obtener subrutas con sus horarios
 router.get('/:id/subrutas', async (req, res) => {
   try {
     const ruta = await Ruta.findById(req.params.id)
@@ -187,7 +184,7 @@ router.get('/:id/subrutas', async (req, res) => {
     const subRutasConHorarios = ruta.subRutas.map(subRuta => {
       const horarios = ruta.horarios
         .filter(h => h.subRutaId.toString() === subRuta._id.toString());
-      
+
       return {
         ...subRuta.toObject(),
         horarios
@@ -200,4 +197,4 @@ router.get('/:id/subrutas', async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

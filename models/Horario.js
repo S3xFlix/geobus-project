@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
 const horarioSchema = new mongoose.Schema({
   rutaId: {
@@ -39,9 +39,10 @@ const horarioSchema = new mongoose.Schema({
   toObject: { virtuals: true }
 });
 
-// Índices para mejor performance
+// Índices para mejorar búsqueda
 horarioSchema.index({ rutaId: 1 });
 horarioSchema.index({ subRutaId: 1 });
 horarioSchema.index({ dias: 1 });
 
-module.exports = mongoose.model('Horario', horarioSchema);
+const Horario = mongoose.model('Horario', horarioSchema);
+export default Horario;
