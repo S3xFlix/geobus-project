@@ -1,6 +1,18 @@
 import mongoose from 'mongoose';
 
-const FeatureSchema = new mongoose.Schema({
+const subRutaSchema = new mongoose.Schema({
+  nombre: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  descripcion: {
+    type: String,
+    trim: true
+  }
+}, { _id: true });
+
+const featureSchema = new mongoose.Schema({
   type: {
     type: String,
     enum: ['Feature'],
@@ -9,7 +21,7 @@ const FeatureSchema = new mongoose.Schema({
   geometry: {
     type: {
       type: String,
-      enum: ['LineString', 'Point'],
+      enum: ['Point', 'LineString'],
       required: true
     },
     coordinates: {
@@ -18,62 +30,47 @@ const FeatureSchema = new mongoose.Schema({
     }
   },
   properties: {
-    type: Object
+    name: String,
+    description: String,
+    id: String
   }
-}, { _id: false });
+});
 
-const SubRutaSchema = new mongoose.Schema({
-  nombre: {
-    type: String,
-    required: true
-  },
-  descripcion: String,
-  direccion: {
-    type: String,
-    enum: ['ida', 'vuelta', 'circular'],
-    required: true
-  }
-}, { _id: false });
-
-const RutaSchema = new mongoose.Schema({
+const rutaSchema = new mongoose.Schema({
   nombre: {
     type: String,
     required: true,
     trim: true,
-    unique: true
+    maxlength: 100
   },
-  type: {
+  empresa: {
     type: String,
-    enum: ['FeatureCollection'],
-    default: 'FeatureCollection'
+    trim: true
   },
-  features: {
-    type: [FeatureSchema],
-    default: []
-  },
-  subRutas: [SubRutaSchema],
+  subRutas: [subRutaSchema],
+  features: [featureSchema],
+  horarios: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Horario'
+  }],
   activa: {
     type: Boolean,
     default: true
-  },
-  empresa: String,
-  fechaCreacion: {
-    type: Date,
-    default: Date.now
   }
 }, {
-  strict: false,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+  timestamps: true,
+  toJSON: {
+    virtuals: true,
+    transform: (doc, ret) => {
+      delete ret.__v;
+      return ret;
+    }
+  }
 });
 
-// Virtual populate
-RutaSchema.virtual('horarios', {
-  ref: 'Horario',
-  localField: '_id',
-  foreignField: 'rutaId',
-  justOne: false
-});
+// Índices para mejor performance
+rutaSchema.index({ nombre: 1 });
+rutaSchema.index({ 'subRutas._id': 1 });
+rutaSchema.index({ activa: 1 });
 
-const Ruta = mongoose.model('Ruta', RutaSchema);
-export default Ruta;
+export default mongoose.model('Ruta', rutaSchema);
